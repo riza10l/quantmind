@@ -258,7 +258,7 @@ def dashboard(port) -> None:
     
     app_path = Path(__file__).parent / "dashboard" / "app.py"
     
-    click.echo(f"🚀 Starting QuantMind Dashboard on http://localhost:{port} ...")
+    click.echo(f"Starting QuantMind Dashboard on http://localhost:{port} ...")
     subprocess.run([sys.executable, "-m", "streamlit", "run", str(app_path), "--server.port", str(port)])
 
 
