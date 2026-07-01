@@ -23,6 +23,12 @@ project_root = Path(__file__).parent.parent.resolve()
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
+TIMEFRAME_TYPE = click.Choice(
+    ["1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"],
+    case_sensitive=False,
+)
+MODEL_TYPES = {"xgboost", "lightgbm", "catboost", "ensemble"}
+
 
 @click.group()
 @click.version_option(version="0.1.0", prog_name="QuantMind")
@@ -47,8 +53,13 @@ def setup() -> None:
 
 @main.command()
 @click.option("--symbols", default=None, help="Comma-separated symbols")
-@click.option("--provider", default=None, help="Provider: binance, yahoo, fear_greed")
-@click.option("--timeframe", default="1d", help="Timeframe: 1m, 5m, 1h, 4h, 1d")
+@click.option(
+    "--provider",
+    type=click.Choice(["binance", "yahoo"], case_sensitive=False),
+    default=None,
+    help="OHLCV provider",
+)
+@click.option("--timeframe", type=TIMEFRAME_TYPE, default="1d", show_default=True)
 @click.option("--start", default=None, help="Start date (YYYY-MM-DD)")
 @click.option("--end", default=None, help="End date (YYYY-MM-DD)")
 def download(symbols, provider, timeframe, start, end) -> None:
@@ -61,10 +72,19 @@ def download(symbols, provider, timeframe, start, end) -> None:
     config = load_config()
     pipeline = DataPipeline(config)
 
+    if bool(symbols) != bool(provider):
+        raise click.UsageError("--symbols and --provider must be supplied together")
+
     if symbols and provider:
         for symbol in symbols.split(","):
-            rows = pipeline.run_symbol(symbol.strip(), provider, timeframe, start, end)
-            click.echo(f"  ✅ {symbol.strip()}: {rows} new rows")
+            normalized_symbol = symbol.strip()
+            if not normalized_symbol:
+                raise click.BadParameter("symbols cannot be empty", param_hint="--symbols")
+
+            rows = pipeline.run_symbol(normalized_symbol, provider, timeframe, start, end)
+            if pipeline.errors:
+                raise click.ClickException(pipeline.errors[-1])
+            click.echo(f"  ✅ {normalized_symbol}: {rows} new rows")
     else:
         stats = pipeline.run()
         click.echo(f"\n📊 Downloaded: {stats['total_downloaded']} | Stored: {stats['total_stored']}")
@@ -75,7 +95,7 @@ def download(symbols, provider, timeframe, start, end) -> None:
 
 @main.command()
 @click.option("--symbol", default=None, help="Specific symbol (default: all)")
-@click.option("--timeframe", default="1d", help="Timeframe")
+@click.option("--timeframe", type=TIMEFRAME_TYPE, default="1d", show_default=True)
 @click.option("--groups", default=None, help="Feature groups (comma-separated)")
 def features(symbol, timeframe, groups) -> None:
     """Compute features from downloaded data."""
@@ -91,17 +111,33 @@ def features(symbol, timeframe, groups) -> None:
 
     if symbol:
         result = store.compute_and_store(symbol, timeframe, groups=group_list)
+        if result.empty:
+            raise click.ClickException(
+                f"No complete feature rows available for {symbol}/{timeframe}. "
+                "Run the download command first and ensure enough history is available."
+            )
         click.echo(f"✅ {symbol}: {result.shape[1]} features × {result.shape[0]} samples")
     else:
         results = store.compute_all_symbols(timeframe, groups=group_list)
+        if not results or not any(results.values()):
+            raise click.ClickException(
+                f"No OHLCV data available for timeframe {timeframe}. "
+                "Run the download command first."
+            )
         for sym, count in results.items():
             click.echo(f"  ✅ {sym}: {count} features")
 
 
 @main.command()
 @click.option("--symbol", default="BTC/USDT", help="Symbol for selection")
-@click.option("--timeframe", default="1d", help="Timeframe")
-@click.option("--top-k", default=50, help="Number of top features to select")
+@click.option("--timeframe", type=TIMEFRAME_TYPE, default="1d", show_default=True)
+@click.option(
+    "--top-k",
+    type=click.IntRange(min=1),
+    default=50,
+    show_default=True,
+    help="Number of top features to select",
+)
 def select(symbol, timeframe, top_k) -> None:
     """Run feature selection pipeline."""
     from src.core.config import load_config
@@ -118,7 +154,10 @@ def select(symbol, timeframe, top_k) -> None:
         for _, row in result.head(20).iterrows():
             click.echo(f"  {row['rank']:3d}. {row['feature_name']:<30s} ({row['consensus_score']:.6f})")
     else:
-        click.echo("⚠️  No features selected. Ensure data and features are computed first.")
+        raise click.ClickException(
+            f"No features selected for {symbol}/{timeframe}. Run the download and "
+            "features commands first, and ensure at least 50 samples remain."
+        )
 
 
 @main.command()
@@ -156,9 +195,15 @@ def summary() -> None:
 
 @main.command()
 @click.option("--symbol", default="BTC/USDT", help="Symbol to train on")
-@click.option("--timeframe", default="1d", help="Timeframe")
+@click.option("--timeframe", type=TIMEFRAME_TYPE, default="1d", show_default=True)
 @click.option("--models", default="xgboost,lightgbm", help="Comma-separated list of models")
-@click.option("--trials", default=10, help="Number of Optuna tuning trials")
+@click.option(
+    "--trials",
+    type=click.IntRange(min=1),
+    default=10,
+    show_default=True,
+    help="Number of Optuna tuning trials",
+)
 def train(symbol, timeframe, models, trials) -> None:
     """Train ML models and search for best hyperparameters."""
     from src.core.config import load_config
@@ -169,18 +214,54 @@ def train(symbol, timeframe, models, trials) -> None:
     config = load_config()
     trainer = ModelTrainer(config)
 
-    model_list = [m.strip() for m in models.split(",")]
+    model_list = [model.strip().lower() for model in models.split(",") if model.strip()]
+    invalid_models = sorted(set(model_list) - MODEL_TYPES)
+    if not model_list or invalid_models:
+        supported = ", ".join(sorted(MODEL_TYPES))
+        invalid = ", ".join(invalid_models) if invalid_models else "empty value"
+        raise click.BadParameter(
+            f"unsupported model(s): {invalid}. Supported: {supported}",
+            param_hint="--models",
+        )
+
     click.echo(f"\n🚀 Training Models: {model_list} on {symbol} ({timeframe})")
     click.echo("=" * 50)
+
+    try:
+        results = trainer.run(
+            symbol=symbol,
+            timeframe=timeframe,
+            models=model_list,
+            auto_tune=True,
+            n_trials=trials,
+        )
+    except ValueError as exc:
+        raise click.ClickException(
+            f"{exc} Run: python src/cli.py features --symbol {symbol} "
+            f"--timeframe {timeframe}"
+        ) from exc
+
+    if not results:
+        raise click.ClickException(
+            "No models were trained. Check that the requested ML dependencies are installed "
+            "and review the model errors above."
+        )
+
+
+@main.command()
+@click.option("--port", default=8501, help="Port to run the dashboard on")
+def dashboard(port) -> None:
+    """Launch the Streamlit web dashboard."""
+    import subprocess
+    import sys
+    from pathlib import Path
     
-    trainer.run(
-        symbol=symbol,
-        timeframe=timeframe,
-        models=model_list,
-        auto_tune=True,
-        n_trials=trials
-    )
+    app_path = Path(__file__).parent / "dashboard" / "app.py"
+    
+    click.echo(f"🚀 Starting QuantMind Dashboard on http://localhost:{port} ...")
+    subprocess.run([sys.executable, "-m", "streamlit", "run", str(app_path), "--server.port", str(port)])
 
 
 if __name__ == "__main__":
     main()
+

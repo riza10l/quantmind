@@ -32,6 +32,7 @@ shap>=0.43
 # Visualization
 plotly>=5.18
 matplotlib>=3.8
+streamlit>=1.30
 
 # Experiment Tracking
 mlflow>=2.9

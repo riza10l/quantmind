@@ -17,7 +17,7 @@ Usage:
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -25,7 +25,7 @@ from src.core.config import AppConfig, load_config
 from src.core.database import DatabaseManager
 from src.core.events import EventTypes, event_bus
 from src.core.logger import get_logger
-from src.core.types import DataSource, Timeframe
+from src.core.types import Timeframe
 from src.data.providers.base import DataProvider, DataProviderError
 from src.data.providers.binance import BinanceProvider
 from src.data.providers.fear_greed import FearGreedProvider
@@ -292,3 +292,8 @@ class DataPipeline:
     def get_available_symbols(self, timeframe: str = "1d") -> list[str]:
         """Get all symbols with stored data."""
         return self._db.get_available_symbols(timeframe)
+
+    @property
+    def errors(self) -> tuple[str, ...]:
+        """Return errors recorded during the current pipeline run."""
+        return tuple(self._stats["errors"])

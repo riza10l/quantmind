@@ -13,10 +13,7 @@ Usage:
 
 from __future__ import annotations
 
-import hashlib
-import json
-from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -24,7 +21,6 @@ from src.core.config import AppConfig, load_config
 from src.core.database import DatabaseManager
 from src.core.events import EventTypes, event_bus
 from src.core.logger import get_logger
-from src.core.types import Timeframe
 
 logger = get_logger("features.store")
 
@@ -119,6 +115,22 @@ class FeatureStore:
             logger.warning("no_features_computed", symbol=symbol)
             return features_df
 
+        # Optional inputs (sentiment, funding, open interest) may not have
+        # been ingested yet. Their features are entirely NaN and must not
+        # cause every otherwise valid OHLCV feature row to be dropped.
+        unavailable_columns = features_df.columns[features_df.isna().all()].tolist()
+        if unavailable_columns:
+            features_df = features_df.drop(columns=unavailable_columns)
+            logger.warning(
+                "unavailable_features_dropped",
+                count=len(unavailable_columns),
+                features=unavailable_columns,
+            )
+
+        if features_df.empty:
+            logger.warning("no_available_features", symbol=symbol)
+            return features_df
+
         # 4. Drop NaN rows if configured
         if self._config.features.drop_na:
             original_len = len(features_df)
@@ -126,6 +138,10 @@ class FeatureStore:
             dropped = original_len - len(features_df)
             if dropped > 0:
                 logger.info("nan_rows_dropped", count=dropped, remaining=len(features_df))
+
+        if features_df.empty:
+            logger.warning("no_complete_feature_rows", symbol=symbol)
+            return features_df
 
         # 5. Store in database
         stored_count = self._db.insert_features_wide(

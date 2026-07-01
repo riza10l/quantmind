@@ -4,12 +4,13 @@ Tests for Data Module
 Tests for validators, cleaning, and pipeline logic.
 """
 
+from datetime import datetime
+
 import numpy as np
 import pandas as pd
 import pytest
-from datetime import datetime
 
-from src.data.validators import OHLCVValidator, ValidationResult, clean_ohlcv
+from src.data.validators import OHLCVValidator, clean_ohlcv
 
 
 class TestOHLCVValidator:
@@ -88,3 +89,52 @@ class TestCleanOHLCV:
         cleaned = clean_ohlcv(df)
         assert cleaned.iloc[0]["high"] >= cleaned.iloc[0]["open"]
         assert cleaned.iloc[0]["low"] <= cleaned.iloc[0]["close"]
+
+
+class TestCLIValidation:
+    """Tests for validation at the CLI boundary."""
+
+    def test_download_rejects_invalid_timeframe_before_pipeline_runs(self):
+        from click.testing import CliRunner
+
+        from src.cli import main
+
+        result = CliRunner().invoke(
+            main,
+            [
+                "download",
+                "--symbols",
+                "BTC/USDT",
+                "--provider",
+                "binance",
+                "--timeframe",
+                "id",
+            ],
+        )
+
+        assert result.exit_code == 2
+        assert "Invalid value for '--timeframe'" in result.output
+        assert "1d" in result.output
+
+
+class TestDataProviderValidation:
+    """Tests for validation in the programmatic provider API."""
+
+    def test_invalid_timeframe_raises_domain_error(self):
+        from src.core.types import DataSource, Timeframe
+        from src.data.providers.base import DataProvider, DataProviderError
+
+        class StubProvider(DataProvider):
+            @property
+            def source(self):
+                return DataSource.BINANCE
+
+            @property
+            def supported_timeframes(self):
+                return [Timeframe.D1]
+
+            def _fetch_ohlcv(self, symbol, timeframe, since=None, until=None, limit=1000):
+                return pd.DataFrame()
+
+        with pytest.raises(DataProviderError, match="Invalid timeframe 'id'"):
+            StubProvider().fetch_ohlcv("BTC/USDT", "id")

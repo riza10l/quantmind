@@ -4,9 +4,7 @@ Tests for Feature Engineering Module
 Tests for feature registry, technical/statistical features, and feature store.
 """
 
-import numpy as np
 import pandas as pd
-import pytest
 
 
 class TestFeatureRegistry:
@@ -163,3 +161,21 @@ class TestFeatureStore:
         if not X.empty:
             assert len(X) == len(y)
             assert set(y.unique()).issubset({0, 1})
+
+    def test_unavailable_optional_features_do_not_remove_all_rows(
+        self, test_config, populated_db
+    ):
+        from src.features.store import FeatureStore
+
+        test_config.features.drop_na = True
+        store = FeatureStore(test_config, populated_db)
+
+        result = store.compute_and_store(
+            "BTC/USDT",
+            "1d",
+            groups=["technical", "sentiment"],
+        )
+
+        assert not result.empty
+        assert not result.isna().any().any()
+        assert "funding_rate_value" not in result.columns

@@ -14,7 +14,6 @@ from __future__ import annotations
 import abc
 import time
 from datetime import datetime
-from typing import Any, Optional
 
 import pandas as pd
 
@@ -114,7 +113,7 @@ class DataProvider(abc.ABC):
         """
         # Convert string types
         if isinstance(timeframe, str):
-            timeframe = Timeframe(timeframe)
+            timeframe = self._parse_timeframe(timeframe)
         if isinstance(since, str):
             since = pd.to_datetime(since).to_pydatetime()
         if isinstance(until, str):
@@ -223,7 +222,7 @@ class DataProvider(abc.ABC):
             Complete DataFrame with all available bars.
         """
         if isinstance(timeframe, str):
-            timeframe = Timeframe(timeframe)
+            timeframe = self._parse_timeframe(timeframe)
         if isinstance(since, str):
             since = pd.to_datetime(since).to_pydatetime()
         if until is None:
@@ -283,6 +282,17 @@ class DataProvider(abc.ABC):
         )
 
         return result
+
+    @staticmethod
+    def _parse_timeframe(value: str) -> Timeframe:
+        """Convert external timeframe input into a validated enum value."""
+        try:
+            return Timeframe(value)
+        except ValueError as exc:
+            supported = ", ".join(timeframe.value for timeframe in Timeframe)
+            raise DataProviderError(
+                f"Invalid timeframe '{value}'. Supported timeframes: {supported}"
+            ) from exc
 
     def fetch_funding_rate(
         self,
