@@ -1,0 +1,61 @@
+# ============================================================
+# QuantMind DVC Pipeline
+# Reproducible pipeline stages from data → features → train → backtest
+# ============================================================
+
+stages:
+  download_data:
+    cmd: python scripts/download_data.py
+    deps:
+      - scripts/download_data.py
+      - configs/data_sources.yaml
+    outs:
+      - data/quantmind.db:
+          persist: true
+    params:
+      - data
+
+  compute_features:
+    cmd: python -m src.features.store
+    deps:
+      - src/features/
+      - data/quantmind.db
+    params:
+      - features
+    outs:
+      - data/features_computed.flag:
+          persist: true
+
+  select_features:
+    cmd: python -m src.features.selection BTC/USDT 1d
+    deps:
+      - src/features/selection.py
+      - data/features_computed.flag
+    params:
+      - selection
+    outs:
+      - data/selected_features.csv:
+          persist: true
+
+  # Fase 2: ML Training (stub)
+  # train_model:
+  #   cmd: python scripts/train_model.py
+  #   deps:
+  #     - src/models/
+  #     - data/selected_features.csv
+  #   params:
+  #     - ml
+  #     - xgboost
+  #     - lightgbm
+  #   metrics:
+  #     - reports/metrics.json:
+  #         cache: false
+
+  # Fase 3: Backtesting (stub)
+  # backtest:
+  #   cmd: python scripts/run_backtest.py
+  #   deps:
+  #     - src/backtest/
+  #     - reports/metrics.json
+  #   params:
+  #     - backtest

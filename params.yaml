@@ -1,0 +1,58 @@
+# ============================================================
+# QuantMind Centralized Parameters
+# Consumed by both DVC pipelines and MLflow experiment tracking
+# ============================================================
+
+# Data
+data:
+  batch_size: 1000
+  default_timeframe: "1d"
+
+# Feature Engineering
+features:
+  lookback: 500
+  drop_na: true
+
+# Feature Selection
+selection:
+  target_horizon: 1
+  top_k: 50
+  random_state: 42
+
+# ML Training
+ml:
+  test_size: 0.2
+  validation_size: 0.1
+  random_state: 42
+  n_trials: 50
+  cv_folds: 5
+
+# XGBoost defaults
+xgboost:
+  n_estimators: 500
+  max_depth: 6
+  learning_rate: 0.05
+  subsample: 0.8
+  colsample_bytree: 0.8
+
+# LightGBM defaults
+lightgbm:
+  n_estimators: 500
+  max_depth: 6
+  learning_rate: 0.05
+  num_leaves: 63
+  subsample: 0.8
+
+# Backtesting
+backtest:
+  initial_capital: 100000
+  commission_pct: 0.001
+  slippage_pct: 0.0005
+
+# RL
+rl:
+  algorithm: PPO
+  total_timesteps: 1000000
+  window_size: 50
+  transaction_cost: 0.001
+  reward_type: sharpe

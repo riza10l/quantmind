@@ -1,0 +1,57 @@
+# ============================================================
+# QuantMind Data Sources Configuration
+# ============================================================
+
+data:
+  batch_size: 1000
+  retry_attempts: 3
+  retry_delay_seconds: 1.0
+  validate_data: true
+
+  sources:
+    # --- Crypto (Binance) ---
+    - provider: binance
+      symbols:
+        - BTC/USDT
+        - ETH/USDT
+        - SOL/USDT
+        - BNB/USDT
+        - XRP/USDT
+        - ADA/USDT
+        - AVAX/USDT
+        - DOT/USDT
+        - LINK/USDT
+        - MATIC/USDT
+      timeframes:
+        - 1d
+        - 4h
+        - 1h
+      start_date: "2020-01-01"
+      enabled: true
+
+    # --- Equities (Yahoo Finance) ---
+    - provider: yahoo
+      symbols:
+        - SPY
+        - QQQ
+        - AAPL
+        - MSFT
+        - GOOGL
+        - AMZN
+        - NVDA
+        - TSLA
+        - META
+        - JPM
+      timeframes:
+        - 1d
+      start_date: "2015-01-01"
+      enabled: true
+
+    # --- Sentiment ---
+    - provider: fear_greed
+      symbols:
+        - crypto
+      timeframes:
+        - 1d
+      start_date: "2018-01-01"
+      enabled: true

@@ -1,0 +1,55 @@
+# ============================================================
+# QuantMind Feature Engineering Configuration
+# ============================================================
+
+features:
+  groups:
+    - name: technical
+      enabled: true
+      params:
+        sma_periods: [7, 14, 21, 50, 100, 200]
+        ema_periods: [9, 12, 21, 26, 50, 100, 200]
+        rsi_periods: [7, 14, 21]
+        bb_periods: [20]
+        bb_std: [2.0]
+        atr_periods: [14, 21]
+
+    - name: statistical
+      enabled: true
+      params:
+        entropy_window: [20, 50]
+        hurst_window: [100]
+        return_windows: [1, 5, 10, 20, 60]
+        volatility_windows: [10, 20, 50]
+
+    - name: microstructure
+      enabled: true
+      params:
+        amihud_window: [20]
+        kyle_window: [20]
+
+    - name: sentiment
+      enabled: true
+
+  lookback_periods: 500
+  drop_na: true
+  normalize: false
+
+# ============================================================
+# Feature Selection Configuration
+# ============================================================
+
+selection:
+  methods:
+    - shap
+    - mutual_info
+    - rfe
+    - permutation
+    - pca
+  target_column: target_return
+  target_horizon: 1
+  top_k: 50
+  shap_n_samples: 500
+  rfe_step: 5
+  pca_variance_threshold: 0.95
+  random_state: 42

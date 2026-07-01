@@ -1,0 +1,64 @@
+# ============================================================
+# QuantMind Backtesting & Execution Configuration
+# ============================================================
+
+backtest:
+  initial_capital: 100000.0
+  commission_pct: 0.001       # 0.1% per trade
+  slippage_pct: 0.0005        # 0.05% slippage
+  latency_ms: 50.0            # Simulated execution latency
+  walk_forward_windows: 5
+  walk_forward_train_pct: 0.7
+  monte_carlo_runs: 1000
+  monte_carlo_method: bootstrap  # bootstrap, shuffle, noise
+
+# ============================================================
+# Portfolio Optimization
+# ============================================================
+
+portfolio:
+  method: risk_parity
+  risk_free_rate: 0.05
+  max_position_pct: 0.25
+  min_position_pct: 0.01
+  rebalance_frequency: weekly
+
+# ============================================================
+# Risk Management
+# ============================================================
+
+risk:
+  max_daily_drawdown_pct: 0.03
+  max_total_drawdown_pct: 0.10
+  max_consecutive_losses: 5
+  var_confidence: 0.95
+  position_sizing_method: kelly
+  circuit_breaker_enabled: true
+
+# ============================================================
+# Execution
+# ============================================================
+
+execution:
+  exchange: binance
+  mode: paper
+  testnet: true
+  max_order_retries: 3
+  order_timeout_seconds: 30.0
+
+# ============================================================
+# Logging
+# ============================================================
+
+logging:
+  level: INFO
+  format: console
+  log_to_file: true
+
+# ============================================================
+# MLflow
+# ============================================================
+
+mlflow:
+  experiment_name: quantmind
+  auto_log: true

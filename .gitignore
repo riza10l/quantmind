@@ -1,0 +1,92 @@
+# QuantMind
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+eggs/
+*.egg
+.eggs/
+
+# Virtual Environment
+venv/
+.venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment & Secrets
+.env
+*.key
+*.pem
+
+# Data (tracked by DVC, not Git)
+data/raw/
+data/processed/
+data/external/
+*.csv
+*.parquet
+*.h5
+*.hdf5
+!tests/test_data/*.csv
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# DVC
+/data/*.dvc
+
+# Models (large files tracked by DVC)
+models/artifacts/
+*.pkl
+*.joblib
+*.pt
+*.pth
+*.onnx
+!tests/test_data/*.pkl
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_metadata
+
+# Docker
+docker/volumes/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+logs/
+*.log
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# mypy
+.mypy_cache/
+
+# pytest
+.pytest_cache/
+
+# Profiling
+*.prof
+*.lprof

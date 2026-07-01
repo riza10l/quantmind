@@ -1,0 +1,80 @@
+# ============================================================
+# QuantMind Docker Compose
+# Full stack: TimescaleDB, Redis, MLflow, Grafana
+# Usage: docker-compose -f docker/docker-compose.yml up -d
+# ============================================================
+
+version: "3.8"
+
+services:
+  # ---- TimescaleDB (PostgreSQL + Time-Series Extensions) ----
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: quantmind_db
+    environment:
+      POSTGRES_USER: quantmind
+      POSTGRES_PASSWORD: quantmind_secret
+      POSTGRES_DB: quantmind
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quantmind"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---- Redis (Signal Caching & Real-Time State) ----
+  redis:
+    image: redis:7-alpine
+    container_name: quantmind_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---- MLflow Tracking Server ----
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.9.0
+    container_name: quantmind_mlflow
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:///mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_data:/mlflow
+    restart: unless-stopped
+
+  # ---- Grafana (Dashboard & Monitoring) ----
+  grafana:
+    image: grafana/grafana:latest
+    container_name: quantmind_grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: quantmind
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-simple-json-datasource
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - timescaledb
+    restart: unless-stopped
+
+volumes:
+  timescale_data:
+  redis_data:
+  mlflow_data:
+  grafana_data:
