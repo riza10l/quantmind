@@ -18,10 +18,12 @@ Usage:
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from math import isfinite
 from pathlib import Path
-from typing import Any, Generator, Optional
+from typing import Any
 
 import pandas as pd
 from sqlalchemy import (
@@ -37,6 +39,8 @@ from sqlalchemy import (
     create_engine,
     text,
 )
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -45,6 +49,12 @@ from src.core.logger import get_logger
 logger = get_logger("core.database")
 
 metadata = MetaData()
+
+
+def _utc_now_naive() -> datetime:
+    """Return UTC without tzinfo for the existing timezone-naive DB schema."""
+    return datetime.now(UTC).replace(tzinfo=None)
+
 
 # ============================================================
 # Table Definitions
@@ -63,7 +73,7 @@ ohlcv_table = Table(
     Column("close", Float, nullable=False),
     Column("volume", Float, nullable=False),
     Column("source", String(30), nullable=False, default="binance"),
-    Column("created_at", DateTime, default=datetime.utcnow),
+    Column("created_at", DateTime, default=_utc_now_naive),
     Index("idx_ohlcv_symbol_tf_ts", "symbol", "timeframe", "timestamp", unique=True),
     Index("idx_ohlcv_timestamp", "timestamp"),
 )
@@ -76,7 +86,7 @@ funding_rate_table = Table(
     Column("symbol", String(50), nullable=False),
     Column("funding_rate", Float, nullable=False),
     Column("source", String(30), nullable=False, default="binance"),
-    Column("created_at", DateTime, default=datetime.utcnow),
+    Column("created_at", DateTime, default=_utc_now_naive),
     Index("idx_funding_symbol_ts", "symbol", "timestamp", unique=True),
 )
 
@@ -88,7 +98,7 @@ open_interest_table = Table(
     Column("symbol", String(50), nullable=False),
     Column("open_interest", Float, nullable=False),
     Column("source", String(30), nullable=False, default="binance"),
-    Column("created_at", DateTime, default=datetime.utcnow),
+    Column("created_at", DateTime, default=_utc_now_naive),
     Index("idx_oi_symbol_ts", "symbol", "timestamp", unique=True),
 )
 
@@ -101,7 +111,7 @@ sentiment_table = Table(
     Column("value", Float, nullable=False),
     Column("label", String(50), nullable=True),
     Column("source", String(30), nullable=False),
-    Column("created_at", DateTime, default=datetime.utcnow),
+    Column("created_at", DateTime, default=_utc_now_naive),
     Index("idx_sentiment_indicator_ts", "indicator", "timestamp", unique=True),
 )
 
@@ -115,7 +125,7 @@ features_table = Table(
     Column("feature_name", String(100), nullable=False),
     Column("value", Float, nullable=True),
     Column("version", String(20), nullable=False, default="v1"),
-    Column("created_at", DateTime, default=datetime.utcnow),
+    Column("created_at", DateTime, default=_utc_now_naive),
     Index("idx_feat_sym_tf_ts_name", "symbol", "timeframe", "timestamp", "feature_name"),
 )
 
@@ -131,7 +141,7 @@ experiments_table = Table(
     Column("features_used", Text, nullable=True),  # JSON serialized
     Column("dataset_hash", String(64), nullable=True),
     Column("status", String(20), nullable=False, default="running"),
-    Column("created_at", DateTime, default=datetime.utcnow),
+    Column("created_at", DateTime, default=_utc_now_naive),
     Column("completed_at", DateTime, nullable=True),
 )
 
@@ -154,7 +164,7 @@ trades_log_table = Table(
     Column("signal_confidence", Float, nullable=True),
     Column("explanation", Text, nullable=True),  # XAI explanation
     Column("mode", String(10), nullable=False, default="paper"),  # paper or live
-    Column("created_at", DateTime, default=datetime.utcnow),
+    Column("created_at", DateTime, default=_utc_now_naive),
     Index("idx_trades_symbol_ts", "symbol", "timestamp"),
 )
 
@@ -167,7 +177,7 @@ selected_features_table = Table(
     Column("feature_name", String(100), nullable=False),
     Column("importance_score", Float, nullable=False),
     Column("rank", Integer, nullable=False),
-    Column("created_at", DateTime, default=datetime.utcnow),
+    Column("created_at", DateTime, default=_utc_now_naive),
     Index("idx_selected_run_method", "selection_run_id", "method"),
 )
 
@@ -253,40 +263,38 @@ class DatabaseManager:
         if not records:
             return 0
 
-        # Count rows before insert
-        with self.session() as session:
-            count_before_result = session.execute(
-                text("SELECT COUNT(*) FROM ohlcv WHERE symbol = :symbol AND timeframe = :timeframe"),
-                {"symbol": records[0]["symbol"], "timeframe": records[0]["timeframe"]},
-            ).fetchone()
-            count_before = count_before_result[0] if count_before_result else 0
+        required = {
+            "timestamp", "symbol", "timeframe", "open", "high", "low",
+            "close", "volume", "source",
+        }
+        values: list[dict[str, Any]] = []
+        for index, record in enumerate(records):
+            missing = required.difference(record)
+            if missing:
+                names = ", ".join(sorted(missing))
+                raise ValueError(f"OHLCV record {index} is missing required fields: {names}")
+            if not str(record["symbol"]).strip() or not str(record["timeframe"]).strip():
+                raise ValueError(f"OHLCV record {index} requires symbol and timeframe")
+            for field_name in ("open", "high", "low", "close", "volume"):
+                if not isfinite(float(record[field_name])):
+                    raise ValueError(f"OHLCV record {index} has non-finite {field_name}")
 
-        with self.session() as session:
-            for record in records:
-                try:
-                    session.execute(
-                        text(
-                            "INSERT OR IGNORE INTO ohlcv "
-                            "(timestamp, symbol, timeframe, open, high, low, close, volume, source, created_at) "
-                            "VALUES (:timestamp, :symbol, :timeframe, :open, :high, :low, :close, :volume, :source, :created_at)"
-                        ),
-                        {
-                            **record,
-                            "created_at": datetime.now(timezone.utc) if "created_at" not in record else record["created_at"],
-                        },
-                    )
-                except Exception:
-                    pass  # Skip on any constraint violation
+            values.append({**record, "created_at": record.get("created_at", _utc_now_naive())})
 
-        # Count rows after insert
-        with self.session() as session:
-            count_after_result = session.execute(
-                text("SELECT COUNT(*) FROM ohlcv WHERE symbol = :symbol AND timeframe = :timeframe"),
-                {"symbol": records[0]["symbol"], "timeframe": records[0]["timeframe"]},
-            ).fetchone()
-            count_after = count_after_result[0] if count_after_result else 0
+        dialect = self.engine.dialect.name
+        if dialect == "sqlite":
+            statement = sqlite_insert(ohlcv_table)
+        elif dialect == "postgresql":
+            statement = postgresql_insert(ohlcv_table)
+        else:
+            raise RuntimeError(f"Unsupported database dialect for OHLCV upsert: {dialect}")
 
-        inserted = count_after - count_before
+        statement = statement.values(values).on_conflict_do_nothing(
+            index_elements=["symbol", "timeframe", "timestamp"]
+        )
+        with self.session() as session:
+            result = session.execute(statement)
+            inserted = max(result.rowcount or 0, 0)
 
         logger.info(
             "ohlcv_inserted",

@@ -13,12 +13,10 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Optional
 
-import numpy as np
 import pandas as pd
-
 
 # ============================================================
 # Enums
@@ -252,10 +250,10 @@ class PortfolioState:
 class FeatureDefinition:
     """Metadata about a computed feature."""
     name: str
-    group: str  # e.g., "technical", "statistical", "microstructure"
-    description: str
+    group: str = "custom"  # e.g., "technical", "statistical", "microstructure"
+    description: str = ""
     params: dict[str, Any] = field(default_factory=dict)
-    dependencies: list[str] = field(default_factory=list)  # OHLCV columns needed
+    dependencies: list[str] = field(default_factory=lambda: ["close"])
 
 
 @dataclass
@@ -267,7 +265,7 @@ class FeatureSet:
     timeframe: Timeframe
     features: pd.DataFrame  # columns = feature names, index = timestamps
     definitions: list[FeatureDefinition] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @property
     def feature_names(self) -> list[str]:
@@ -313,14 +311,3 @@ class BacktestResult:
     equity_curve: Optional[pd.Series] = None
     trades: list[Trade] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class FeatureDefinition:
-    """Metadata about a registered feature."""
-    name: str
-    group: str = "custom"
-    description: str = ""
-    params: dict[str, Any] = field(default_factory=dict)
-    dependencies: list[str] = field(default_factory=lambda: ["close"])
-

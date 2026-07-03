@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 
 from src.core.logger import get_logger
-from src.features.registry import register_feature
+from src.features.registry import feature_registry, register_feature
 
 logger = get_logger("features.technical")
 
@@ -34,11 +34,11 @@ def _ensure_pandas_ta():
     try:
         import pandas_ta as ta
         return ta
-    except ImportError:
+    except ImportError as exc:
         raise ImportError(
             "pandas-ta is required for technical features. "
             "Install with: pip install pandas-ta"
-        )
+        ) from exc
 
 
 # ============================================================
@@ -422,18 +422,12 @@ def register_all_technical_features() -> int:
 
     Returns number of features registered.
     """
-    before = feature_registry.count if 'feature_registry' in dir() else 0
-
     _register_sma_features()
     _register_ema_features()
     _register_rsi_features()
     _register_cci_features()
     _register_roc_features()
     _register_atr_features()
-
-    # Import the registry to get count
-    from src.features.registry import feature_registry
-    after = feature_registry.count
 
     technical_count = len(feature_registry.list_features(group="technical"))
     logger.info("technical_features_registered", count=technical_count)

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import yaml
 from dotenv import load_dotenv
@@ -63,7 +63,7 @@ class DataSourceConfig(BaseModel):
     symbols: list[str] = Field(default_factory=list)
     timeframes: list[str] = Field(default_factory=lambda: ["1d"])
     start_date: str = "2020-01-01"
-    end_date: Optional[str] = None  # None = up to now
+    end_date: str | None = None  # None = up to now
     enabled: bool = True
 
 
@@ -309,24 +309,35 @@ def load_yaml_config(config_dir: Path | None = None) -> dict[str, Any]:
 
     # Load each YAML file and merge
     for yaml_file in sorted(config_dir.glob("*.yaml")):
-        with open(yaml_file, "r", encoding="utf-8") as f:
+        with open(yaml_file, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
             merged = _deep_merge(merged, data)
 
     return merged
 
 
-def load_config(config_dir: Path | None = None) -> AppConfig:
+def load_config(config_dir: Path | None = None, profile: str | None = None) -> AppConfig:
     """
     Load the full application configuration.
 
     Priority (highest to lowest):
     1. Environment variables
-    2. YAML config files
-    3. Default values in Pydantic models
+    2. Profile YAML (configs/profiles/<profile>.yaml) — research|paper|testnet|live,
+       selected via the `profile` arg or QUANTMIND_PROFILE env (default: research)
+    3. Base YAML config files
+    4. Default values in Pydantic models
 
     Returns:
         AppConfig: Fully resolved configuration object.
     """
     yaml_data = load_yaml_config(config_dir)
+
+    profile = profile or os.getenv("QUANTMIND_PROFILE", "research")
+    profile_file = (config_dir or CONFIGS_DIR) / "profiles" / f"{profile}.yaml"
+    if profile_file.exists():
+        with open(profile_file, encoding="utf-8") as f:
+            yaml_data = _deep_merge(yaml_data, yaml.safe_load(f) or {})
+    elif profile != "research":
+        raise FileNotFoundError(f"unknown config profile: {profile} ({profile_file})")
+
     return AppConfig(**yaml_data)

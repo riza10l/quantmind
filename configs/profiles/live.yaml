@@ -1,0 +1,8 @@
+# Live profile: REAL MONEY.
+# Guarded in code (src/execution/orchestrator.py::assert_live_allowed):
+#   1. QUANTMIND_LIVE_APPROVED=yes must be set in the environment
+#   2. No KILL_SWITCH file may exist in the project root
+# Creating an empty file named KILL_SWITCH in the project root halts live trading.
+execution:
+  mode: live
+  testnet: false

@@ -1,0 +1,4 @@
+# Research profile: offline analysis only, no order routing.
+execution:
+  mode: research
+  testnet: true

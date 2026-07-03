@@ -4,16 +4,14 @@ Tests for Core Module
 Tests for types, configuration, database, and event bus.
 """
 
-import pytest
-import pandas as pd
 from datetime import datetime
 
-from src.core.types import (
-    OHLCV, Signal, Order, Position, Trade,
-    Timeframe, Side, OrderType, OrderStatus, SignalType, DataSource,
-)
-from src.core.config import AppConfig, load_config
-from src.core.events import EventBus, Event, EventTypes
+import pandas as pd
+import pytest
+
+from src.core.config import AppConfig
+from src.core.events import Event, EventBus
+from src.core.types import OHLCV, FeatureDefinition, FeatureSet, Position, Side, Timeframe
 
 
 class TestTimeframe:
@@ -91,7 +89,6 @@ class TestPosition:
         )
         assert pos.return_pct == pytest.approx(0.1, abs=0.001)
         assert pos.market_value == 33000.0
-
     def test_position_return_short(self):
         pos = Position(
             symbol="BTC/USDT",
@@ -101,6 +98,23 @@ class TestPosition:
             current_price=27000.0,
         )
         assert pos.return_pct == pytest.approx(0.1, abs=0.001)
+
+
+def test_feature_definition_has_one_consistent_default_shape():
+    definition = FeatureDefinition(name="momentum")
+    feature_set = FeatureSet(
+        name="default",
+        version="v1",
+        symbol="BTC/USDT",
+        timeframe=Timeframe.D1,
+        features=pd.DataFrame({"momentum": [1.0]}),
+        definitions=[definition],
+    )
+
+    assert definition.group == "custom"
+    assert definition.dependencies == ["close"]
+    assert feature_set.definitions == [definition]
+    assert feature_set.created_at.tzinfo is not None
 
 
 class TestAppConfig:
@@ -216,6 +230,31 @@ class TestDatabase:
             source="test",
         )
         assert inserted == 0  # No new rows
+
+    def test_insert_counts_mixed_symbols(self, test_db):
+        base = {
+            "timestamp": datetime(2024, 1, 1),
+            "timeframe": "1d",
+            "open": 100.0,
+            "high": 110.0,
+            "low": 90.0,
+            "close": 105.0,
+            "volume": 1_000.0,
+            "source": "test",
+        }
+
+        inserted = test_db.insert_ohlcv([
+            {**base, "symbol": "BTC/USDT"},
+            {**base, "symbol": "ETH/USDT"},
+        ])
+
+        assert inserted == 2
+        assert test_db.get_row_count("BTC/USDT", "1d") == 1
+        assert test_db.get_row_count("ETH/USDT", "1d") == 1
+
+    def test_insert_rejects_malformed_record(self, test_db):
+        with pytest.raises(ValueError, match="missing required fields"):
+            test_db.insert_ohlcv([{"symbol": "BTC/USDT"}])
 
     def test_get_available_symbols(self, populated_db):
         symbols = populated_db.get_available_symbols("1d")

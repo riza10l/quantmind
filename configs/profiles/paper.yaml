@@ -1,0 +1,4 @@
+# Paper profile: simulated fills via PaperBroker, full audit logging.
+execution:
+  mode: paper
+  testnet: true

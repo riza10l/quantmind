@@ -238,11 +238,19 @@ class LightGBMModel(BaseModel):
         self._model = None
         self._scaler = StandardScaler()
 
+    def _scaled_features(self, X: pd.DataFrame, *, fit: bool = False) -> pd.DataFrame:
+        """Scale features while preserving names and row indexes for LightGBM."""
+        if fit:
+            values = self._scaler.fit_transform(X)
+        else:
+            values = self._scaler.transform(X)
+        return pd.DataFrame(values, index=X.index, columns=self.feature_names)
+
     def train(self, X: pd.DataFrame, y: pd.Series, **kwargs: Any) -> ModelMetrics:
         from lightgbm import LGBMClassifier
 
         self.feature_names = list(X.columns)
-        X_scaled = self._scaler.fit_transform(X)
+        X_scaled = self._scaled_features(X, fit=True)
 
         self._model = LGBMClassifier(**self.params)
         self._model.fit(X_scaled, y)
@@ -253,11 +261,11 @@ class LightGBMModel(BaseModel):
 
     def predict(self, X: pd.DataFrame) -> np.ndarray:
         assert self._model is not None
-        return self._model.predict(self._scaler.transform(X))
+        return self._model.predict(self._scaled_features(X))
 
     def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
         assert self._model is not None
-        return self._model.predict_proba(self._scaler.transform(X))
+        return self._model.predict_proba(self._scaled_features(X))
 
     def evaluate(self, X: pd.DataFrame, y: pd.Series) -> ModelMetrics:
         preds = self.predict(X)
@@ -281,7 +289,8 @@ class LightGBMModel(BaseModel):
         from lightgbm import LGBMClassifier
 
         optuna.logging.set_verbosity(optuna.logging.WARNING)
-        X_scaled = self._scaler.fit_transform(X)
+        self.feature_names = list(X.columns)
+        X_scaled = self._scaled_features(X, fit=True)
         cv = PurgedKFold(n_splits=5)
 
         def objective(trial):
@@ -300,8 +309,8 @@ class LightGBMModel(BaseModel):
             scores = []
             for train_idx, val_idx in cv.split(X_scaled):
                 model = LGBMClassifier(**params)
-                model.fit(X_scaled[train_idx], y.iloc[train_idx])
-                preds = model.predict(X_scaled[val_idx])
+                model.fit(X_scaled.iloc[train_idx], y.iloc[train_idx])
+                preds = model.predict(X_scaled.iloc[val_idx])
                 scores.append(f1_score(y.iloc[val_idx], preds, zero_division=0))
             return float(np.mean(scores))
 

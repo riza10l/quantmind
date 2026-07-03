@@ -1,0 +1,4 @@
+# Testnet profile: real exchange API against the sandbox environment.
+execution:
+  mode: testnet
+  testnet: true

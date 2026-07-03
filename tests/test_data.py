@@ -116,6 +116,48 @@ class TestCLIValidation:
         assert "Invalid value for '--timeframe'" in result.output
         assert "1d" in result.output
 
+    def test_dashboard_reports_missing_streamlit(self, monkeypatch):
+        from importlib import metadata
+
+        from click.testing import CliRunner
+
+        from src.cli import main
+
+        def missing_package(_name):
+            raise metadata.PackageNotFoundError("streamlit")
+
+        monkeypatch.setattr(metadata, "version", missing_package)
+
+        result = CliRunner().invoke(main, ["dashboard"])
+
+        assert result.exit_code == 1
+        assert "Streamlit is not installed" in result.output
+        assert 'python -m pip install -e ".[dashboard]"' in result.output
+
+    def test_dashboard_launches_streamlit_with_selected_port(self, monkeypatch):
+        from importlib import metadata
+        import subprocess
+
+        from click.testing import CliRunner
+
+        from src.cli import main
+
+        launched = {}
+
+        monkeypatch.setattr(metadata, "version", lambda _name: "1.58.0")
+
+        def record_run(command, check):
+            launched["command"] = command
+            launched["check"] = check
+
+        monkeypatch.setattr(subprocess, "run", record_run)
+
+        result = CliRunner().invoke(main, ["dashboard", "--port", "8600"])
+
+        assert result.exit_code == 0
+        assert launched["check"] is True
+        assert launched["command"][-2:] == ["--server.port", "8600"]
+
 
 class TestDataProviderValidation:
     """Tests for validation in the programmatic provider API."""
